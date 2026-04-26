@@ -51,6 +51,7 @@ export default function App() {
   const [isResearching, setIsResearching] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [isGhostRound, setIsGhostRound] = useState(false);
+  const [actualCorrectAnswer, setActualCorrectAnswer] = useState('');
 
   const timerRef = useRef(null);
 
@@ -91,6 +92,13 @@ export default function App() {
     } catch (err) { alert(err.message); }
   };
 
+  const getProviderTag = (source) => {
+    if (source?.includes('Qwen')) return <span className="provider-tag hf">QWEN</span>;
+    if (source?.includes('Minimax')) return <span className="provider-tag nv">MINIMAX</span>;
+    if (source?.includes('Llama')) return <span className="provider-tag groq">LLAMA</span>;
+    return <span className="provider-tag local">LOCAL</span>;
+  };
+
   const nextInfiltrationStep = async (index) => {
     const isGhostTime = (index + 1) % 5 === 0 && blackBook.length > 0;
     const trackId = sessionConfig.tracks[index % sessionConfig.tracks.length];
@@ -107,7 +115,7 @@ export default function App() {
     setUserInput('');
     
     const fetchPromise = isGhostTime ? getGhostPayload() : getNextChallenge(trackId);
-    const minWait = new Promise(res => setTimeout(res, 2500));
+    const minWait = new Promise(res => setTimeout(res, 2000));
     try {
       await Promise.all([fetchPromise, minWait]);
       setView('arena');
@@ -118,8 +126,9 @@ export default function App() {
   const getGhostPayload = async () => {
     const randomFailure = blackBook[Math.floor(Math.random() * blackBook.length)];
     try {
-      const { challenge, source } = await fetchGhostChallenge(randomFailure);
+      const { challenge, source, originalAnswer } = await fetchGhostChallenge(randomFailure);
       setChallenge(challenge);
+      setActualCorrectAnswer(originalAnswer || challenge.correct_answer);
       setSourceLabel(`GHOST_RECALL (${source})`);
       startTimer();
     } catch (err) { await getNextChallenge(sessionConfig.tracks[0]); }
@@ -129,15 +138,18 @@ export default function App() {
     if (!trackId) return;
     if (timerRef.current) clearInterval(timerRef.current);
     try {
-      const { challenge, source } = await fetchChallenge(trackId, score); 
+      const { challenge, source, originalAnswer } = await fetchChallenge(trackId, score); 
       setChallenge(challenge);
+      setActualCorrectAnswer(originalAnswer || challenge.correct_answer);
       setSourceLabel(source);
       startTimer();
     } catch (err) {
       const localPool = fallbackChallenges[trackId] || fallbackChallenges['dsa'];
       const randomChallenge = localPool[Math.floor(Math.random() * localPool.length)];
-      setChallenge({ ...randomChallenge, mode: 'choice' });
-      setSourceLabel('LOCAL_PAYLOAD (Offline)');
+      const chal = { ...randomChallenge, mode: 'choice' };
+      setChallenge(chal);
+      setActualCorrectAnswer(chal.correct_answer);
+      setSourceLabel('LOCAL_PAYLOAD');
       startTimer();
     }
   };
@@ -162,23 +174,42 @@ export default function App() {
       if (challenge.mode === 'input') {
         setIsVerifying(true);
         try {
-          const validation = await verifyAnswer(challenge.question, challenge.correct_answer, answer);
+          const validation = await verifyAnswer(challenge.question, actualCorrectAnswer, answer);
           isCorrect = validation.is_correct;
           aiFeedback = validation.feedback;
-        } catch (e) { isCorrect = answer.toString().toLowerCase().trim() === challenge.correct_answer.toString().toLowerCase().trim(); } 
+        } catch (e) { isCorrect = answer.toString().toLowerCase().trim() === actualCorrectAnswer.toString().toLowerCase().trim(); } 
         finally { setIsVerifying(false); }
-      } else { isCorrect = answer === challenge.correct_answer; }
+      } else { 
+        isCorrect = answer === actualCorrectAnswer; 
+      }
     }
     const bonus = isCorrect ? Math.floor(timer / 6) : 0;
     const earned = isCorrect ? 15 + bonus : 0;
     if (isCorrect) { setScore(prev => prev + earned); setSessionXP(prev => prev + earned); } 
     else {
-      const entry = { ...challenge, user_answer: isTimeout ? 'TIMEOUT' : answer, date: new Date().toISOString(), track: currentTrack?.name, trackId: currentTrack?.id };
+      const entry = { ...challenge, correct_answer: actualCorrectAnswer, user_answer: isTimeout ? 'TIMEOUT' : answer, date: new Date().toISOString(), track: currentTrack?.name, trackId: currentTrack?.id };
       setBlackBook(prev => [entry, ...prev].slice(0, 50));
     }
-    const resultObj = { challenge, correct: isCorrect, earned, correct_answer: challenge.correct_answer, explanation: challenge.explanation, feedback: aiFeedback, trackName: currentTrack?.name };
+    const resultObj = { challenge, correct: isCorrect, earned, correct_answer: actualCorrectAnswer, explanation: challenge.explanation, feedback: aiFeedback, trackName: currentTrack?.name };
     setSessionResults(prev => [...prev, resultObj]);
     setResult(resultObj);
+  };
+
+  const toggleTrackSelection = (trackId) => {
+    setSessionConfig(prev => {
+      const tracks = prev.tracks.includes(trackId) 
+        ? prev.tracks.filter(id => id !== trackId)
+        : [...prev.tracks, trackId];
+      return { ...prev, tracks };
+    });
+  };
+
+  const initiateDuoMission = () => {
+    if (sessionConfig.tracks.length === 0) { alert("SELECT AT LEAST ONE NODE."); return; }
+    setSessionXP(0);
+    setSessionResults([]);
+    setCurrentIndex(0);
+    nextInfiltrationStep(0);
   };
 
   const proceedToNext = () => {
@@ -245,27 +276,60 @@ export default function App() {
 
   if (view === 'home') {
     return (
-      <div className="app-shell">
+      <div className="app-shell home-bg">
         <header className="terminal-header mobile-header">
           <div className="status-bar">
             <span className="user-label">USER: {currentUser}</span>
-            <span className="xp-label">{score} XP</span>
+            <div className="xp-container">
+              <span className="xp-label">{score} XP</span>
+              <div className="xp-rank">{score < 500 ? 'ASSOCIATE' : score < 1500 ? 'STAFF' : 'PRINCIPAL'}</div>
+            </div>
             <button className="logout-btn" onClick={() => { localStorage.removeItem('beserk_active_user'); setCurrentUser(null); }}>OFFLINE</button>
           </div>
         </header>
         <main className="container mobile-container">
-          <section className="hero-section compact"><h1>SIEGE <span>NODE</span></h1></section>
-          <button className="duo-start-btn" onClick={() => setView('duo-setup')}>⚔️ INITIATE DUO INFILTRATION</button>
+          <section className="hero-section compact">
+            <h1 className="glitch-text" data-text="INTERVIEW SIEGE">INTERVIEW <span>SIEGE</span></h1>
+            <p className="hero-sub">BREACH THE TECHNICAL BARRIER. SCALE THE FAANG WALL.</p>
+          </section>
+          
+          <div className="mission-hub">
+            <button className="duo-start-btn" onClick={() => setView('duo-setup')}>
+              <span className="btn-icon">⚔️</span> 
+              <span className="btn-text">INITIATE MULTI-NODE INFILTRATION</span>
+              <span className="btn-glow"></span>
+            </button>
+          </div>
+
+          <div className="track-grid-header">SELECT SINGLE TARGET NODE:</div>
           <div className="track-grid mobile-grid">
             {TRACKS.map(track => (
-              <div key={track.id} className="track-card mobile-card" onClick={() => { setSessionConfig({ tracks: [track.id], count: 1 }); setCurrentIndex(0); nextInfiltrationStep(0); }}>
-                <div className="track-icon">{track.icon}</div><h3>{track.name}</h3><div className="scan-line"></div>
+              <div key={track.id} className={`track-card mobile-card ${track.id}`} onClick={() => { setSessionConfig({ tracks: [track.id], count: 1 }); setCurrentIndex(0); nextInfiltrationStep(0); }}>
+                <div className="track-icon">{track.icon}</div>
+                <div className="track-info">
+                  <h3>{track.name}</h3>
+                  <div className="track-status">NODE_ACTIVE</div>
+                </div>
+                <div className="scan-line"></div>
               </div>
             ))}
           </div>
-          <div className="mobile-home-actions">
-            <button className="mobile-action-btn" onClick={() => setView('black-book')}>📓 BLACK BOOK</button>
-            <button className="mobile-action-btn highlighted" onClick={() => { setCurrentPage(0); setView('notebook'); }}>📝 NOTES</button>
+          
+          <div className="persistence-vault">
+            <button className="vault-btn" onClick={() => setView('black-book')}>
+              <span className="v-icon">📓</span>
+              <div className="v-text">
+                <span className="v-title">BLACK BOOK</span>
+                <span className="v-desc">{blackBook.length} FAILED BREACHES</span>
+              </div>
+            </button>
+            <button className="vault-btn highlighted" onClick={() => { setCurrentPage(0); setView('notebook'); }}>
+              <span className="v-icon">📝</span>
+              <div className="v-text">
+                <span className="v-title">LECTURE NOTES</span>
+                <span className="v-desc">{notebook.length} RESEARCH FILES</span>
+              </div>
+            </button>
           </div>
         </main>
       </div>
@@ -373,10 +437,16 @@ export default function App() {
   }
 
   return (
-    <div className={`app-shell arena ${isGhostRound ? 'ghost-arena' : ''} ${timer < 10 ? 'glitch-alert' : ''}`}>
+    <div className={`app-shell arena ${isGhostRound ? 'ghost-arena' : ''}`}>
       <header className="arena-header mobile-header">
         <div className="timer-ring"><svg viewBox="0 0 36 36" className="circular-chart"><path className={`circle ${timer < 10 ? 'danger' : ''}`} strokeDasharray={`${(timer / 60) * 100}, 100`} d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/><text x="18" y="20.35" className="percentage">{timer}s</text></svg></div>
-        <div className="arena-info"><h2>{isGhostRound ? '[GHOST_CHALLENGE]' : currentTrack?.name}</h2><div className="source-display">{currentIndex+1}/{sessionConfig.count}</div></div>
+        <div className="arena-info">
+          <h2>{isGhostRound ? '[GHOST_CHALLENGE]' : currentTrack?.name}</h2>
+          <div className="meta-row">
+            <div className="source-display">{currentIndex+1}/{sessionConfig.count}</div>
+            {getProviderTag(sourceLabel)}
+          </div>
+        </div>
         <div className="arena-actions"><button className="refetch-btn" onClick={() => nextInfiltrationStep(currentIndex)}>🔄</button><button className="abort-btn" onClick={() => setView('home')}>X</button></div>
       </header>
       <main className="container mobile-arena-content">
@@ -387,18 +457,55 @@ export default function App() {
             <h3 className="question-text">{challenge.question}</h3>
             {challenge.mode === 'choice' ? (
               <div className={currentTrack?.id === 'system_design' ? 'arch-grid' : 'options-grid'}>
-                {challenge.options.map((o, i) => (<button key={i} className={`option-btn ${currentTrack?.id === 'system_design' ? 'arch-block' : ''} ${result ? (o === challenge.correct_answer ? 'correct' : 'incorrect') : ''}`} onClick={() => handleAnswer(o)} disabled={!!result}><span>{o}</span></button>))}
+                {challenge.options.map((o, i) => (
+                  <button 
+                    key={i} 
+                    className={`option-btn ${currentTrack?.id === 'system_design' ? 'arch-block' : ''} ${
+                      result 
+                        ? (o === actualCorrectAnswer ? 'correct' : (o === result.user_answer ? 'incorrect' : '')) 
+                        : ''
+                    }`} 
+                    onClick={() => handleAnswer(o)} 
+                    disabled={!!result}
+                  >
+                    <span>{o}</span>
+                  </button>
+                ))}
               </div>
             ) : (
               <div className="input-zone"><input type="text" className="manual-input" placeholder="Payload..." value={userInput} onChange={(e) => setUserInput(e.target.value)} disabled={!!result || isVerifying}/>{!result && <button className="submit-payload-btn" onClick={() => handleAnswer(userInput)}>EXECUTE</button>}</div>
             )}
             {result && (
-              <div className={`postmortem ${result.correct ? 'success' : 'fail'}`}>
-                <div className="postmortem-header"><h3>{result.correct ? 'SUCCESS' : 'FAILED'}</h3><button className="research-btn" onClick={() => handleResearch()}>📚 Research</button></div>
-                {result.feedback && <p className="ai-feedback-msg">AI: {result.feedback}</p>}
-                <p className="correct-ans-reveal">Correct: {result.correct_answer}</p>
-                <div className="explanation"><strong>LOG:</strong> {result.explanation}</div>
-                <button className="next-btn mobile-next" onClick={proceedToNext}>{currentIndex + 1 >= sessionConfig.count ? 'VIEW DEBRIEF' : 'NEXT TARGET >'}</button>
+              <div className={`xp-gain-card animate-fade-in ${result.correct ? 'success' : 'fail'}`}>
+                <div className="xp-gain-header">
+                  <span className="xp-plus">{result.correct ? `+${result.earned} XP` : '+0 XP'}</span>
+                  <div className="result-label">
+                    {result.correct ? 'BREACH SUCCESSFUL' : (result.isTimeout ? 'BREACH FAILED (TIMEOUT)' : 'BREACH FAILED')}
+                  </div>
+                </div>
+                
+                <div className="breach-intel">
+                  <div className="intel-row">
+                    <span className="intel-label">CORRECT_PAYLOAD:</span>
+                    <span className="intel-val">{result.correct_answer}</span>
+                  </div>
+                  <div className="intel-explanation">
+                    <p>{result.explanation}</p>
+                  </div>
+                  <button className="research-btn surge-research" onClick={() => handleResearch()}>📚 INITIATE DEEP RESEARCH</button>
+                </div>
+
+                <div className="progression-actions">
+                  <button className="next-btn surge-btn" onClick={() => {
+                    const nextIdx = currentIndex + 1;
+                    setCurrentIndex(nextIdx);
+                    nextInfiltrationStep(nextIdx);
+                  }}>
+                    <span className="btn-label">NEXT TARGET</span>
+                    <span className="difficulty-tag">INCREASING RIGOR...</span>
+                  </button>
+                  <button className="abort-session-btn" onClick={() => setView('home')}>EXIT NODE</button>
+                </div>
               </div>
             )}
           </section>

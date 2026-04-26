@@ -1,16 +1,42 @@
-# React + Vite
+# 🛡️ Interview Siege
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+**Interview Siege** is a fun, gamified interview preparation platform designed to help developers master technical concepts through high-intensity challenges.
 
-Currently, two official plugins are available:
+## 🚀 Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **FAANG-Level Challenges**: Dynamically generated technical questions across DSA, ML, System Design, and OOPS.
+- **AI-Powered Evaluation**: Real-time feedback and semantic answer verification powered by advanced LLMs (Qwen, MiniMax, Llama).
+- **Infiltration Tracks**: Specialized paths for different domains (🧠 DSA, 🤖 ML, 🏗️ System Design, 💾 DB).
+- **Ghost Rounds**: Personalized review sessions that resurface failed challenges to ensure mastery.
+- **The Black Book**: A personal log of failed breaches to track your weak points.
+- **Cyber-Terminal UI**: A high-performance, immersive terminal interface for focused study.
 
-## React Compiler
+## 🛠️ Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Frontend**: React 19 + Vite
+- **Styling**: Vanilla CSS (Cyberpunk Theme)
+- **AI Engine**: Hugging Face, NVIDIA, and Groq APIs
+- **Storage**: LocalStorage + Neon PostgreSQL (Cloud Sync)
 
-## Expanding the ESLint configuration
+## 🏁 Getting Started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+1. **Clone the repository**
+2. **Install dependencies**: `npm install`
+3. **Set up Environment Variables**:
+   Create a `.env` file with your API keys:
+   ```env
+   VITE_HF_API_KEY=your_key
+   VITE_NVIDIA_API_KEY=your_key
+   VITE_GROQ_API_KEY=your_key
+   ```
+4. **Run the development server**: `npm run dev`
+
+## 🧠 Mission Protocol
+
+1. **Breach**: Select a track and initiate an infiltration.
+2. **Execute**: Answer challenges within the time limit to earn XP.
+3. **Research**: Use the built-in AI Professor to deep-dive into concepts you miss.
+4. **Master**: Clear your Black Book and achieve maximum Synergy.
+
+---
+*Good luck, Agent. The technical interview is your battlefield.*

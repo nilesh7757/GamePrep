@@ -1,18 +1,18 @@
-const CACHE_NAME = 'scenescoop-assets-v1';
+const CACHE_NAME = 'interview-siege-assets-v1';
 
 export const assetManager = {
-  // Check if all game images are cached
-  async checkCacheStatus(scenes) {
+  // Check if all game assets are cached
+  async checkCacheStatus(assets) {
     if (!('caches' in window)) return false;
     const cache = await caches.open(CACHE_NAME);
     const keys = await cache.keys();
     const cachedUrls = keys.map(request => request.url);
     
-    return scenes.every(scene => cachedUrls.includes(scene.image));
+    return assets.every(asset => cachedUrls.includes(asset.url));
   },
 
-  // Download all images into browser cache
-  async downloadAssets(scenes, onProgress) {
+  // Download all assets into browser cache
+  async downloadAssets(assets, onProgress) {
     if (!('caches' in window)) {
       alert("Your browser doesn't support local caching.");
       return;
@@ -21,30 +21,28 @@ export const assetManager = {
     const cache = await caches.open(CACHE_NAME);
     let downloaded = 0;
 
-    for (const scene of scenes) {
+    for (const asset of assets) {
       try {
-        const response = await fetch(scene.image);
+        const response = await fetch(asset.url);
         if (response.ok) {
-          await cache.put(scene.image, response);
+          await cache.put(asset.url, response);
         } else {
-          console.warn(`Asset not found (404): ${scene.image}`);
+          console.warn(`Asset not found (404): ${asset.url}`);
         }
         downloaded++;
-        if (onProgress) onProgress(Math.floor((downloaded / scenes.length) * 100));
+        if (onProgress) onProgress(Math.floor((downloaded / assets.length) * 100));
       } catch (error) {
-        console.error(`Network error or CORS issue for: ${scene.image}`, error);
+        console.error(`Network error or CORS issue for: ${asset.url}`, error);
       }
     }
   },
 
-  // Get a reliable placeholder if an image fails
-  getFallbackImage(type) {
-    return type === 'anime' 
-      ? 'https://images.unsplash.com/photo-1578632738981-4330ce9b2763?q=80&w=1000&auto=format&fit=crop' // Generic Anime
-      : 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?q=80&w=1000&auto=format&fit=crop'; // Generic Movie
+  // Get a reliable placeholder if an asset fails
+  getFallbackImage() {
+    return 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=1000&auto=format&fit=crop'; // Tech/Cyber background
   },
 
-  // Clear all cached images
+  // Clear all cached assets
   async clearCache() {
     if (!('caches' in window)) return;
     await caches.delete(CACHE_NAME);
