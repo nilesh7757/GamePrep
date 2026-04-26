@@ -128,7 +128,7 @@ export const fetchChallenge = async (track, xp) => {
     catch (err2) {
       try { return await executeFetch(PROVIDERS.groq, track, xp); } 
       catch (err3) { 
-        console.error("[CRITICAL] All AI providers exhausted. Falling back to LOCAL_POOL.");
+        console.error("[CRITICAL] All AI providers exhausted.");
         throw new Error("TOTAL_AI_SILENCE"); 
       }
     }
@@ -166,6 +166,19 @@ export const fetchResearch = async (topic, question) => {
     const data = await response.json();
     return data.choices[0].message.content;
   } catch (err) { throw new Error("PROF_OFFLINE"); }
+};
+
+export const fetchHint = async (question, context) => {
+  const prompt = `You are a helpful Senior Engineer. The student is stuck on this question: "${question}". Provide a ONE-SENTENCE subtle hint that guides them without giving away the answer. Context: ${context}`;
+  try {
+    const response = await fetch(PROVIDERS.groq.base_url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${PROVIDERS.groq.api_key}` },
+      body: JSON.stringify({ model: PROVIDERS.groq.model, messages: [{ role: 'user', content: prompt }], temperature: 0.5 })
+    });
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (err) { return "Think about the space-time trade-off."; }
 };
 
 export const verifyAnswer = async (question, correct, guess) => {

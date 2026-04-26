@@ -12,7 +12,8 @@ export const dbService = {
       password_hash: password, 
       xp: 0,
       notebook: [],
-      black_book: []
+      black_book: [],
+      mastery: {}
     };
     
     // For local play, we mirror to localStorage + Cloud Sync
@@ -32,13 +33,21 @@ export const dbService = {
   },
 
   // 3. Sync Progress to Cloud
-  async syncProgress(username, xp, notebook, blackBook) {
-    const data = { xp, notebook, black_book: blackBook };
+  async syncProgress(username, xp, notebook, blackBook, mastery) {
+    const data = { xp, notebook, black_book: blackBook, mastery };
     const saved = JSON.parse(localStorage.getItem(`user_${username}`));
     localStorage.setItem(`user_${username}`, JSON.stringify({ ...saved, ...data }));
     
     // Simulate Cloud Push
     console.log(`[CLOUD_SYNC] Data pushed to Neon PostgreSQL for user: ${username}`);
     return true;
+  },
+
+  async resetUserProgress(username) {
+    const saved = JSON.parse(localStorage.getItem(`user_${username}`));
+    const empty = { ...saved, xp: 0, notebook: [], black_book: [], mastery: {} };
+    localStorage.setItem(`user_${username}`, JSON.stringify(empty));
+    console.log(`[DB_RESET] Progress wiped for: ${username}`);
+    return empty;
   }
 };
