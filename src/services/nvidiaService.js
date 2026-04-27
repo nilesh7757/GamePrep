@@ -21,26 +21,37 @@ const PROVIDERS = {
   }
 };
 
-const PROMPT_TEMPLATE = (track, xp) => {
+const PROMPT_TEMPLATE = (track, xp, masteryPerc = 0) => {
   const isInputMode = Math.random() > 0.5; 
   const difficulty = xp < 300 ? 'Junior Associate' : 
                      xp < 800 ? 'Mid-Level Engineer' : 
                      xp < 1500 ? 'Senior Staff' : 
                      xp < 3000 ? 'Principal Architect' : 'L10 / Fellow';
   
-  const trackContexts = {
-    'dsa': `Difficulty: ${difficulty}. Challenge the user with complex data structures (Tries, Segment Trees, Graphs) or highly optimized DP solutions.`,
-    'ml': `Difficulty: ${difficulty}. Focus on mathematical foundations, specific optimizer behaviors, or scaling laws for LLMs.`,
-    'system_design': `Difficulty: ${difficulty}. Challenge the user with edge cases in distributed consistency (CAP/PACELC), global low-latency patterns, or observability at scale.`,
-    'oops_db': `Difficulty: ${difficulty}. Focus on complex concurrency patterns, isolation levels (Repeatable Read vs Serializable), or advanced design patterns.`
+  const trackInstructions = {
+    'dsa': `Independently select an advanced algorithmic or data structure topic. The user has ${masteryPerc}% mastery in this track. Adjust complexity accordingly.`,
+    'ml': `Independently select a sophisticated Machine Learning or Deep Learning topic. The user has ${masteryPerc}% mastery in this track. Adjust complexity accordingly.`,
+    'system_design': `Independently select a complex Distributed Systems topic. The user has ${masteryPerc}% mastery in this track. Adjust complexity accordingly.`,
+    'oops_db': `Independently select a rigorous Object Oriented or Database Internal topic. The user has ${masteryPerc}% mastery in this track. Adjust complexity accordingly.`
   };
 
   return `
-    You are an Elite Technical Interviewer at a Tier-1 Tech Giant (Google/Meta/NVIDIA). 
+    You are the Game Master of "Interview Siege," a high-stakes technical adventure. 
+    Your goal is to make learning FUN and ADDICTIVE. 
+    
     Difficulty Level: ${difficulty} (Current XP: ${xp}). 
+    Mastery in Track: ${masteryPerc}%.
     Target Track: ${track.toUpperCase()}.
     
-    ${trackContexts[track] || 'Provide a challenging technical scenario.'}
+    Instruction: ${trackInstructions[track] || 'Create a thrilling technical challenge.'}
+    
+    Personality Rules:
+    - DON'T be a dry textbook. Be a creative Game Master.
+    - Write "Scenarios" like they are part of a mission (e.g., "The production servers are melting down," "A rival hacker left this cryptic code").
+    - If mastery is high (>70%), make the challenge legendary and niche.
+    - If mastery is low (<30%), make it an engaging "training simulation."
+    
+    Output ONLY valid JSON.
 
     Generate ONE highly specific technical challenge in valid JSON format:
     {
@@ -69,7 +80,7 @@ function shuffleArray(array) {
   return array;
 }
 
-const executeFetch = async (config, track, xp, customPrompt = null) => {
+const executeFetch = async (config, track, xp, customPrompt = null, masteryPerc = 0) => {
   if (!config.api_key) {
     console.error(`[AI_ERROR] Missing API Key for ${config.name}`);
     throw new Error("MISSING_API_KEY");
@@ -86,7 +97,7 @@ const executeFetch = async (config, track, xp, customPrompt = null) => {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.api_key}` },
       body: JSON.stringify({
         model: config.model,
-        messages: [{ role: 'user', content: customPrompt || PROMPT_TEMPLATE(track, xp) }],
+        messages: [{ role: 'user', content: customPrompt || PROMPT_TEMPLATE(track, xp, masteryPerc) }],
         temperature: 0.7
       })
     });
@@ -101,6 +112,12 @@ const executeFetch = async (config, track, xp, customPrompt = null) => {
 
     const data = await response.json();
     const content = data.choices[0].message.content;
+    
+    // For research/text responses that aren't JSON
+    if (customPrompt && !customPrompt.includes('JSON')) {
+      return { content, source: config.name };
+    }
+
     const firstBrace = content.indexOf('{');
     const lastBrace = content.lastIndexOf('}');
     const challenge = JSON.parse(content.substring(firstBrace, lastBrace + 1));
@@ -121,12 +138,12 @@ const executeFetch = async (config, track, xp, customPrompt = null) => {
   }
 };
 
-export const fetchChallenge = async (track, xp) => {
-  try { return await executeFetch(PROVIDERS.hf, track, xp); } 
+export const fetchChallenge = async (track, xp, masteryPerc = 0) => {
+  try { return await executeFetch(PROVIDERS.hf, track, xp, null, masteryPerc); } 
   catch (err) {
-    try { return await executeFetch(PROVIDERS.nvidia, track, xp); } 
+    try { return await executeFetch(PROVIDERS.nvidia, track, xp, null, masteryPerc); } 
     catch (err2) {
-      try { return await executeFetch(PROVIDERS.groq, track, xp); } 
+      try { return await executeFetch(PROVIDERS.groq, track, xp, null, masteryPerc); } 
       catch (err3) { 
         console.error("[CRITICAL] All AI providers exhausted.");
         throw new Error("TOTAL_AI_SILENCE"); 
@@ -143,29 +160,51 @@ export const fetchGhostChallenge = async (failedEntry) => {
 
 export const fetchResearch = async (topic, question) => {
   const prompt = `
-    You are a Senior Staff Engineer. Provide a "Deep Research" lecture note on the following topic: "${topic}".
-    The student recently missed a question related to: "${question}".
+    You are a Senior Staff Engineer at a top tech firm. 
+    Provide a "Deep Research" lecture note on the technical topic: "${topic}".
+    Context/Scenario: "${question}".
     
     Structure your response using Markdown:
     # [Topic Title]
     ## 🔍 Core Concept
-    ...detailed explanation...
-    ## 🛠️ Implementation & Trade-offs
-    ...practical application and what to watch out for...
-    ## 🚀 Interview Pro-Tip
-    ...what interviewers are really looking for regarding this topic...
+    ...detailed technical explanation...
     
-    Keep it concise, technical, and high-impact. Use code blocks if necessary.
+    ## 📊 Visual Architecture
+    IF POSSIBLE, provide a Mermaid.js UML diagram (flowchart, sequence, or class diagram) to visualize the concept.
+    Use fenced code blocks with 'mermaid' tag:
+    \`\`\`mermaid
+    graph TD;
+      A-->B;
+    \`\`\`
+    
+    ## 🛠️ Implementation & Trade-offs
+    ...practical application, Big O analysis, and what to watch out for...
+    ## 🚀 Interview Pro-Tip
+    ...what interviewers are really looking for regarding this specific topic...
+    
+    Keep it concise, highly technical, and high-impact. Use code blocks for examples.
   `;
+
+  // Try Groq first, then fall back to HF, then NVIDIA
   try {
-    const response = await fetch(PROVIDERS.groq.base_url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${PROVIDERS.groq.api_key}` },
-      body: JSON.stringify({ model: PROVIDERS.groq.model, messages: [{ role: 'user', content: prompt }] })
-    });
-    const data = await response.json();
-    return data.choices[0].message.content;
-  } catch (err) { throw new Error("PROF_OFFLINE"); }
+    const res = await executeFetch(PROVIDERS.groq, 'Research', 0, prompt);
+    return res.content;
+  } catch (err) {
+    console.warn("Groq research failed, trying HF...");
+    try {
+      const res = await executeFetch(PROVIDERS.hf, 'Research', 0, prompt);
+      return res.content;
+    } catch (err2) {
+      console.warn("HF research failed, trying NVIDIA...");
+      try {
+        const res = await executeFetch(PROVIDERS.nvidia, 'Research', 0, prompt);
+        return res.content;
+      } catch (err3) {
+        console.error("All research providers offline.");
+        throw new Error("RESEARCH_NODES_OFFLINE");
+      }
+    }
+  }
 };
 
 export const fetchHint = async (question, context) => {

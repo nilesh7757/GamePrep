@@ -11,15 +11,153 @@ const TRACKS = [
   { id: 'oops_db', name: 'OOPS & DB', icon: '💾' }
 ];
 
+const Mermaid = ({ chart }) => {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (ref.current && chart) {
+      ref.current.removeAttribute('data-processed');
+      try {
+        window.mermaid.contentLoaded();
+        window.mermaid.init(undefined, ref.current);
+      } catch (e) {
+        console.error("Mermaid init failed", e);
+      }
+    }
+  }, [chart]);
+
+  return (
+    <div className="mermaid-container animate-fade-in">
+      <div ref={ref} className="mermaid">{chart}</div>
+    </div>
+  );
+};
+
 const renderMD = (text) => {
   if (!text) return null;
-  return text.split('\n').map((line, i) => {
-    if (line.startsWith('###')) return <h3 key={i} className="nb-h3">{line.replace('###', '')}</h3>;
-    if (line.startsWith('##')) return <h2 key={i} className="nb-h2">{line.replace('##', '')}</h2>;
-    if (line.startsWith('#')) return <h1 key={i} className="nb-h1">{line.replace('#', '')}</h1>;
-    let processed = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>').replace(/`(.*?)`/g, '<code class="nb-inline-code">$1</code>');
-    return <p key={i} dangerouslySetInnerHTML={{ __html: processed || '&nbsp;' }} />;
+
+  const lines = text.split('\n');
+  const elements = [];
+  let currentCodeBlock = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // Handle Fenced Code Blocks
+    if (line.startsWith('```')) {
+      if (currentCodeBlock === null) {
+        currentCodeBlock = { lang: line.replace('```', '').trim(), content: [] };
+      } else {
+        if (currentCodeBlock.lang === 'mermaid') {
+          elements.push(<Mermaid key={`mermaid-${i}`} chart={currentCodeBlock.content.join('\n')} />);
+        } else {
+          elements.push(
+            <div key={`code-${i}`} className="md-code-block">
+              <div className="code-lang">{currentCodeBlock.lang || 'code'}</div>
+              <pre><code>{currentCodeBlock.content.join('\n')}</code></pre>
+            </div>
+          );
+        }
+        currentCodeBlock = null;
+      }
+      continue;
+    }
+
+    if (currentCodeBlock) {
+      currentCodeBlock.content.push(line);
+      continue;
+    }
+
+    // Handle Headers
+    if (line.startsWith('### ')) {
+      elements.push(<h3 key={i} className="md-h3">{line.replace('### ', '')}</h3>);
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      elements.push(<h2 key={i} className="md-h2">{line.replace('## ', '')}</h2>);
+      continue;
+    }
+    if (line.startsWith('# ')) {
+      elements.push(<h1 key={i} className="md-h1">{line.replace('# ', '')}</h1>);
+      continue;
+    }
+
+    // Handle Lists
+    if (line.trim().startsWith('- ') || line.trim().startsWith('* ')) {
+      elements.push(<li key={i} className="md-list-item">{line.trim().substring(2)}</li>);
+      continue;
+    }
+
+    // Handle Blockquotes
+    if (line.startsWith('> ')) {
+      elements.push(<blockquote key={i} className="md-blockquote">{line.substring(2)}</blockquote>);
+      continue;
+    }
+
+    // Handle Paragraphs with inline styling
+    if (line.trim() === '') {
+      elements.push(<div key={i} className="md-spacer" />);
+    } else {
+      let processed = line
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        .replace(/`(.*?)`/g, '<code class="md-inline-code">$1</code>');
+      
+      elements.push(<p key={i} className="md-p" dangerouslySetInnerHTML={{ __html: processed }} />);
+    }
+  }
+
+  return elements;
+};
+
+const RadarChart = ({ mastery, tracks }) => {
+  const size = 300;
+  const center = size / 2;
+  const radius = size * 0.35;
+  const angleStep = (Math.PI * 2) / 5; // Pentagon for 4 tracks + Speed
+
+  // Data mapping
+  const points = tracks.map((t, i) => {
+    const m = mastery[t.id] || { tried: 0, ok: 0 };
+    const perc = m.tried > 0 ? (m.ok / m.tried) : 0.1; // 10% min for visibility
+    return perc;
   });
+  
+  // Add "Combat Speed" as 5th point (mocked for now, based on XP)
+  points.push(0.65); 
+
+  const getPath = (vals) => {
+    return vals.map((v, i) => {
+      const x = center + radius * v * Math.cos(i * angleStep - Math.PI / 2);
+      const y = center + radius * v * Math.sin(i * angleStep - Math.PI / 2);
+      return `${i === 0 ? 'M' : 'L'} ${x} ${y}`;
+    }).join(' ') + ' Z';
+  };
+
+  return (
+    <div className="radar-container">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        {/* Background webs */}
+        {[0.2, 0.4, 0.6, 0.8, 1].map(r => (
+          <path key={r} d={getPath([r,r,r,r,r])} className="radar-grid" />
+        ))}
+        {/* Axis lines */}
+        {[0,1,2,3,4].map(i => {
+          const x = center + radius * Math.cos(i * angleStep - Math.PI / 2);
+          const y = center + radius * Math.sin(i * angleStep - Math.PI / 2);
+          return <line key={i} x1={center} y1={center} x2={x} y2={y} className="radar-axis" />;
+        })}
+        {/* The Area */}
+        <path d={getPath(points)} className="radar-area" />
+        {/* Labels */}
+        {['DSA', 'ML', 'SYS', 'DB', 'SPD'].map((label, i) => {
+          const x = center + (radius + 20) * Math.cos(i * angleStep - Math.PI / 2);
+          const y = center + (radius + 20) * Math.sin(i * angleStep - Math.PI / 2);
+          return <text key={i} x={x} y={y} textAnchor="middle" className="radar-label">{label}</text>;
+        })}
+      </svg>
+    </div>
+  );
 };
 
 export default function App() {
@@ -43,6 +181,12 @@ export default function App() {
   const [notebook, setNotebook] = useState([]);
   const [mastery, setMastery] = useState({}); // { dsa: { tried: 10, ok: 5 } }
   
+  const [noteSearch, setNoteSearch] = useState('');
+  const [mistakeSearch, setMistakeSearch] = useState('');
+  const [starredNotes, setStarredNotes] = useState([]); // Array of note titles
+  const [starredMistakes, setStarredMistakes] = useState([]); // Array of mistake dates/ids
+  const [showStarredOnly, setShowStarredOnly] = useState(false);
+
   const [error, setError] = useState(null);
   const [sourceLabel, setSourceLabel] = useState('');
   const [logs, setLogs] = useState([]);
@@ -56,7 +200,19 @@ export default function App() {
   const [isFetchingHint, setIsFetchingHint] = useState(false);
   const [ghostTime, setGhostTime] = useState(30); // Goal to beat
 
+  const [currentNoteTab, setCurrentNoteTab] = useState('dsa');
+  const [currentPage, setCurrentPage] = useState(0);
+  const [isFlipping, setIsFlipping] = useState(false);
+
   const timerRef = useRef(null);
+
+  const flipPage = (dir) => {
+    setIsFlipping(true);
+    setTimeout(() => {
+      setCurrentPage(prev => dir === 'next' ? prev + 1 : prev - 1);
+      setIsFlipping(false);
+    }, 300);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('beserk_active_user');
@@ -68,6 +224,8 @@ export default function App() {
         setNotebook(user.notebook || []);
         setBlackBook(user.black_book || []);
         setMastery(user.mastery || {});
+        setStarredNotes(user.starred_notes || []);
+        setStarredMistakes(user.starred_mistakes || []);
       }
     }
   }, []);
@@ -75,10 +233,27 @@ export default function App() {
   useEffect(() => {
     if (currentUser) {
       // Custom sync for structured data
-      const data = { username: currentUser, xp: score, notebook, black_book: blackBook, mastery, last_sync: new Date().toISOString() };
+      const data = { 
+        username: currentUser, 
+        xp: score, 
+        notebook, 
+        black_book: blackBook, 
+        mastery, 
+        starred_notes: starredNotes,
+        starred_mistakes: starredMistakes,
+        last_sync: new Date().toISOString() 
+      };
       localStorage.setItem(`user_${currentUser}`, JSON.stringify(data));
     }
-  }, [score, notebook, blackBook, mastery, currentUser]);
+  }, [score, notebook, blackBook, mastery, starredNotes, starredMistakes, currentUser]);
+
+  const toggleStarNote = (title) => {
+    setStarredNotes(prev => prev.includes(title) ? prev.filter(t => t !== title) : [...prev, title]);
+  };
+
+  const toggleStarMistake = (date) => {
+    setStarredMistakes(prev => prev.includes(date) ? prev.filter(d => d !== date) : [...prev, date]);
+  };
 
   const handleAuth = async (e) => {
     e.preventDefault();
@@ -151,8 +326,13 @@ export default function App() {
   const getNextChallenge = async (trackId) => {
     if (!trackId) return;
     if (timerRef.current) clearInterval(timerRef.current);
+    
+    // Calculate mastery percentage for this track
+    const m = mastery[trackId] || { tried: 0, ok: 0 };
+    const perc = m.tried > 0 ? Math.floor((m.ok / m.tried) * 100) : 0;
+
     try {
-      const { challenge, source, originalAnswer } = await fetchChallenge(trackId, score); 
+      const { challenge, source, originalAnswer } = await fetchChallenge(trackId, score, perc); 
       if (!challenge) throw new Error("EMPTY_PAYLOAD");
       setChallenge(challenge);
       setActualCorrectAnswer(originalAnswer || challenge.correct_answer);
@@ -282,14 +462,32 @@ export default function App() {
   const handleResearch = async (targetChallenge = null) => {
     setIsResearching(true);
     const target = targetChallenge || challenge;
+    
+    if (!target) {
+      alert("No topic selected for research.");
+      setIsResearching(false);
+      return;
+    }
+
     try {
       const content = await fetchResearch(target.question, target.scenario);
-      const newNote = { title: target.question, content, date: new Date().toISOString(), track: target.track || currentTrack?.name, trackId: target.trackId || currentTrack?.id };
+      const tid = target.trackId || currentTrack?.id || 'dsa';
+      const newNote = { 
+        title: target.question, 
+        content, 
+        date: new Date().toISOString(), 
+        track: target.track || currentTrack?.name || 'Technical', 
+        trackId: tid 
+      };
+      
       setNotebook(prev => [newNote, ...prev]);
-      setCurrentNoteTab(newNote.trackId);
+      setCurrentNoteTab(tid);
       setCurrentPage(0);
       setView('notebook');
-    } catch (e) { alert("PROFESSOR_OFFLINE."); } 
+    } catch (e) { 
+      console.error("RESEARCH_FAILED:", e);
+      alert(`RESEARCH_FAILED: ${e.message || "All providers offline"}`); 
+    } 
     finally { setIsResearching(false); }
   };
 
@@ -307,8 +505,8 @@ export default function App() {
   useEffect(() => {
     if (loading) {
       const msgs = isGhostRound 
-        ? ["Spectral leak detected...", "Ghost Rival syncing solve time...", "Ghost: Beat " + ghostTime + "s...", "Ghost Protocol Engage..."]
-        : ["Syncing Protocols...", "Checking Node Health...", "Preparing Breach...", "Bypassing Firewalls..."];
+        ? ["Syncing ghost data...", "Optimizing solve target...", "Speed benchmark: " + ghostTime + "s...", "Engaging Speed Round..."]
+        : ["Connecting to AI Node...", "Analyzing track mastery...", "Fetching tailored challenge...", "Finalizing payload..."];
       setLogs([msgs[0]]);
       let i = 1;
       const itv = setInterval(() => { if (i < msgs.length) { setLogs(prev => [...prev, msgs[i]]); i++; } }, 500);
@@ -337,48 +535,52 @@ export default function App() {
 
   if (view === 'home') {
     return (
-      <div className="app-shell home-bg">
+      <div className="app-shell home-bg mobile-home">
         <header className="terminal-header mobile-header">
           <div className="status-bar">
             <span className="user-label">USER: {currentUser}</span>
-            <div className="xp-container">
+            <div className="xp-container mobile-xp">
               <span className="xp-label">{score} XP</span>
-              <div className="xp-rank">{score < 500 ? 'ASSOCIATE' : score < 1500 ? 'STAFF' : 'PRINCIPAL'}</div>
+              <div className="xp-rank">{score < 500 ? 'ASSOC' : score < 1500 ? 'STAFF' : 'PRIN'}</div>
             </div>
-            <button className="logout-btn" onClick={() => { localStorage.removeItem('beserk_active_user'); setCurrentUser(null); }}>GO OFFLINE</button>
+            <button className="logout-btn mini" onClick={() => { localStorage.removeItem('beserk_active_user'); setCurrentUser(null); }}>OFF</button>
           </div>
         </header>
         <main className="container mobile-container">
-          <section className="hero-section compact">
-            <h1 className="glitch-text" data-text="Interview Siege">Interview <span>Siege</span></h1>
-            <p className="hero-sub">Master technical interviews with adaptive AI challenges.</p>
+          <section className="hero-section compact mobile-hero">
+            <h1 className="glitch-text mobile-title" data-text="Interview Siege">Interview <span>Siege</span></h1>
+            <p className="hero-sub mobile-sub">Master interviews with adaptive AI challenges.</p>
+            
+            {/* SPIDER MAP INTEGRATION */}
+            <div className="radar-wrapper mobile-radar">
+              <RadarChart mastery={mastery} tracks={TRACKS} />
+            </div>
           </section>
           
-          <div className="mission-hub">
-            <button className="duo-start-btn" onClick={() => setView('duo-setup')}>
+          <div className="mission-hub mobile-hub">
+            <button className="duo-start-btn mobile-duo" onClick={() => setView('duo-setup')}>
               <span className="btn-icon">⚡</span> 
-              <span className="btn-text">START MIXED TOPIC CHALLENGE</span>
-              <span className="btn-glow"></span>
+              <span className="btn-text">MIXED CHALLENGE</span>
             </button>
           </div>
 
-          <div className="track-grid-header">SELECT PRACTICE TOPIC:</div>
+          <div className="track-grid-header">PRACTICE TOPICS:</div>
           <div className="track-grid mobile-grid">
             {TRACKS.map(track => {
               const m = mastery[track.id] || { tried: 0, ok: 0 };
               const perc = m.tried > 0 ? Math.floor((m.ok / m.tried) * 100) : 0;
               return (
-                <div key={track.id} className={`track-card mobile-card ${track.id}`} onClick={() => { 
+                <div key={track.id} className={`track-card mobile-card-item ${track.id}`} onClick={() => { 
                   setSessionConfig({ tracks: [track.id], count: 1 }); 
                   setCurrentIndex(0); 
                   nextInfiltrationStep(0, track.id); 
                 }}>
-                  <div className="track-icon">{track.icon}</div>
+                  <div className="track-icon mobile-icon">{track.icon}</div>
                   <div className="track-info">
                     <h3>{track.name}</h3>
                     <div className="mastery-indicator">
                       <div className="mastery-bar"><div className="mastery-fill" style={{ width: `${perc}%` }}></div></div>
-                      <span className="mastery-text">{perc}% MASTERY ({m.ok}/{m.tried})</span>
+                      <span className="mastery-text">{perc}% ({m.ok}/{m.tried})</span>
                     </div>
                   </div>
                 </div>
@@ -386,19 +588,19 @@ export default function App() {
             })}
           </div>
           
-          <div className="persistence-vault">
+          <div className="persistence-vault mobile-vault">
             <button className="vault-btn" onClick={() => setView('black-book')}>
               <span className="v-icon">📓</span>
               <div className="v-text">
-                <span className="v-title">REVIEW CENTER</span>
-                <span className="v-desc">{blackBook.length} MISTAKES LOGGED</span>
+                <span className="v-title">REVIEW</span>
+                <span className="v-desc">{blackBook.length} LOGS</span>
               </div>
             </button>
             <button className="vault-btn highlighted" onClick={() => { setCurrentPage(0); setView('notebook'); }}>
               <span className="v-icon">📝</span>
               <div className="v-text">
-                <span className="v-title">STUDY GUIDES</span>
-                <span className="v-desc">{notebook.length} GENERATED NOTES</span>
+                <span className="v-title">NOTES</span>
+                <span className="v-desc">{notebook.length} GUIDES</span>
               </div>
             </button>
           </div>
@@ -457,18 +659,41 @@ export default function App() {
   }
 
   if (view === 'notebook') {
-    const filtered = notebook.filter(n => n.trackId === currentNoteTab);
+    const filtered = notebook
+      .filter(n => n.trackId === currentNoteTab)
+      .filter(n => n.title.toLowerCase().includes(noteSearch.toLowerCase()) || n.content.toLowerCase().includes(noteSearch.toLowerCase()))
+      .filter(n => !showStarredOnly || starredNotes.includes(n.title));
+
     const current = filtered[currentPage];
+
     return (
       <div className="app-shell notebook-view mobile-notebook">
         <header className="terminal-header">
           <div className="status-bar">
-            <button className="back-link" onClick={() => setView('home')}>&lt; BACK TO DASHBOARD</button>
+            <button className="back-link" onClick={() => setView('home')}>&lt; DASHBOARD</button>
             <div className="title" style={{fontWeight: 800, letterSpacing: '1px'}}>STUDY GUIDES</div>
-            <div style={{width: '100px'}}></div>
+            <div style={{width: '80px'}}></div>
           </div>
         </header>
         
+        <div className="search-filter-bar">
+          <div className="search-box">
+            <span className="search-icon">🔍</span>
+            <input 
+              type="text" 
+              placeholder="Search notes..." 
+              value={noteSearch}
+              onChange={(e) => { setNoteSearch(e.target.value); setCurrentPage(0); }}
+            />
+          </div>
+          <button 
+            className={`filter-btn ${showStarredOnly ? 'active' : ''}`}
+            onClick={() => { setShowStarredOnly(!showStarredOnly); setCurrentPage(0); }}
+          >
+            {showStarredOnly ? '⭐ STARRED ONLY' : '☆ SHOW ALL'}
+          </button>
+        </div>
+
         <div className="notebook-tab-bar mobile-tabs">
           {TRACKS.map(t => (
             <button 
@@ -488,27 +713,31 @@ export default function App() {
               <div className="notebook-content">
                 <div className="note-header">
                   <div className="note-badge">{currentTrack?.name || 'Technical Note'}</div>
-                  <div className="note-meta">PAGE {currentPage + 1} OF {filtered.length}</div>
+                  <button 
+                    className={`star-note-btn ${starredNotes.includes(current.title) ? 'starred' : ''}`}
+                    onClick={() => toggleStarNote(current.title)}
+                  >
+                    {starredNotes.includes(current.title) ? '⭐ STARRED' : '☆ STAR NOTE'}
+                  </button>
                 </div>
                 <h1 className="nb-h1">{current.title}</h1>
                 <div className="note-body-md">{renderMD(current.content)}</div>
                 
-                {filtered.length > 1 && (
-                  <div className="notebook-controls">
-                    <button className="page-btn" onClick={() => flipPage('prev')} disabled={currentPage === 0}>
-                      PREVIOUS PAGE
-                    </button>
-                    <button className="page-btn primary" onClick={() => flipPage('next')} disabled={currentPage === filtered.length - 1}>
-                      NEXT PAGE
-                    </button>
-                  </div>
-                )}
+                <div className="note-footer">
+                  <div className="note-meta">PAGE {currentPage + 1} OF {filtered.length}</div>
+                  {filtered.length > 1 && (
+                    <div className="notebook-controls">
+                      <button className="page-btn" onClick={() => flipPage('prev')} disabled={currentPage === 0}>PREV</button>
+                      <button className="page-btn primary" onClick={() => flipPage('next')} disabled={currentPage === filtered.length - 1}>NEXT</button>
+                    </div>
+                  )}
+                </div>
               </div>
             ) : (
               <div className="empty-note">
-                <div className="empty-icon">📝</div>
-                <h3>No notes in {currentNoteTab.toUpperCase()}</h3>
-                <p>Complete challenges and research topics to generate study guides.</p>
+                <div className="empty-icon">{noteSearch || showStarredOnly ? '🔍' : '📝'}</div>
+                <h3>{noteSearch || showStarredOnly ? 'No matching notes' : `No notes in ${currentNoteTab.toUpperCase()}`}</h3>
+                <p>Try changing your search or filters.</p>
               </div>
             )}
           </div>
@@ -518,33 +747,64 @@ export default function App() {
   }
 
   if (view === 'black-book') {
+    const filteredMistakes = blackBook
+      .filter(m => m.question.toLowerCase().includes(mistakeSearch.toLowerCase()) || m.explanation.toLowerCase().includes(mistakeSearch.toLowerCase()))
+      .filter(m => !showStarredOnly || starredMistakes.includes(m.date));
+
     return (
       <div className="app-shell dark">
         <header className="terminal-header">
           <div className="status-bar">
-            <button className="back-link" onClick={() => setView('home')}>&lt; BACK TO DASHBOARD</button>
+            <button className="back-link" onClick={() => setView('home')}>&lt; DASHBOARD</button>
             <div className="title" style={{fontWeight: 800, letterSpacing: '1px'}}>REVIEW CENTER</div>
-            <div style={{width: '100px'}}></div>
+            <div style={{width: '80px'}}></div>
           </div>
         </header>
+
+        <div className="search-filter-bar">
+          <div className="search-box">
+            <span className="search-icon">🔍</span>
+            <input 
+              type="text" 
+              placeholder="Search mistakes..." 
+              value={mistakeSearch}
+              onChange={(e) => setMistakeSearch(e.target.value)}
+            />
+          </div>
+          <button 
+            className={`filter-btn ${showStarredOnly ? 'active' : ''}`}
+            onClick={() => setShowStarredOnly(!showStarredOnly)}
+          >
+            {showStarredOnly ? '⭐ STARRED ONLY' : '☆ SHOW ALL'}
+          </button>
+        </div>
+
         <main className="container book-container mobile-book">
           <div className="view-header">
             <h2>Mistakes Log</h2>
-            <p>Review your previous incorrect answers to strengthen your knowledge.</p>
+            <p>Review and star your critical errors to strengthen your knowledge.</p>
           </div>
           
-          {blackBook.length === 0 ? (
+          {filteredMistakes.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">🏆</div>
-              <h3>Clear Record!</h3>
-              <p>You haven't made any mistakes yet. Keep up the perfect streak!</p>
+              <div className="empty-icon">{mistakeSearch || showStarredOnly ? '🔍' : '🏆'}</div>
+              <h3>{mistakeSearch || showStarredOnly ? 'No matching mistakes' : 'Clear Record!'}</h3>
+              <p>Keep pushing your boundaries!</p>
             </div>
           ) : (
             <div className="book-grid">
-              {blackBook.map((e, i) => (
+              {filteredMistakes.map((e, i) => (
                 <div key={i} className="book-entry animate-fade-in">
                   <div className="entry-header">
-                    <span className={`topic-badge ${e.trackId}`}>{e.track}</span>
+                    <div className="entry-tags">
+                      <span className={`topic-badge ${e.trackId}`}>{e.track}</span>
+                      <button 
+                        className={`star-mini-btn ${starredMistakes.includes(e.date) ? 'starred' : ''}`}
+                        onClick={() => toggleStarMistake(e.date)}
+                      >
+                        {starredMistakes.includes(e.date) ? '⭐' : '☆'}
+                      </button>
+                    </div>
                     <button className="study-btn" onClick={() => handleResearch(e)}>
                       RESEARCH TOPIC
                     </button>
